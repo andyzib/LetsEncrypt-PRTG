@@ -8,6 +8,8 @@ Post request script to install a Let's Encrypt certificate obtained with Certify
 * [PowerShell 5.0](https://docs.microsoft.com/en-us/skypeforbusiness/set-up-your-computer-for-windows-powershell/download-and-install-windows-powershell-5-1)
 * You should already have Windows PowerShell 5.1 if you're running Windows 10 Anniversary Update or Windows Server 2016.
 * [PSPKI](https://www.pkisolutions.com/tools/pspki) module that is availabe in the [PowerShell Gallery](https://www.powershellgallery.com/packages/PSPKI/3.4.2.0). 
+* Tested/Verfied with Certify the Web version 4.1.6.0. 
+* Tested/Verfied on Server 2012 R2 with PowerShell 5. 
 
 ## Installation
 1. Open PowerShell as an administrator and run Install-Module PSPKI
