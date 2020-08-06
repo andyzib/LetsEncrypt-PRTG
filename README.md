@@ -14,12 +14,17 @@ Post request script to install a Let's Encrypt certificate obtained with Certify
 ## Installation
 1. Open PowerShell as an administrator and run Install-Module PSPKI
 2. Save the script to a directory (Example: E:\Scripts\Certify-PRTG\Certify-PRTG.ps1)
+3. Verify that $PRTGCertRoot variable matches your PRTG installation. 
 
-## Running
-In the Certify the Web GUI:
-1. Check Show Advanced Options.
-2. Click Scripting. 
-3. Click "..." and browse to the script or enter the full path to the script. 
+## Running Certify-PRTG.ps1
+The script must be configured as a Deployment Task in the Certify GUI. 
+1. Configure obtaining your certificate in Certify. 
+2. Deployment Mode: Certificate Store Only is the only option I've tested. ![Certify Deployment Mode](Documentation/Images/Certify-DeploymentMode.png)
+3. Under Deployment Tasks, add a Run Powershell Script task. ![Select Run Powershell Script](Certify-DeploymentTask01.png)
+4. Only trigger script on success. ![Task General Settings](Certify-DeploymentTask02.png)
+5. Use a security principal with appropiate permissions for your environment. ![Task Parameters](Certify-DeploymentTask03.png)
+6. Pass Result as First Argument must be checked. 
+7. Request/Renew certificate as normal. If successful, cert will be added to PRTG and PRTG will be restarted. 
 
 # Windows ACME Simple (WACS)
 A script for WACS is on my todo list. 
