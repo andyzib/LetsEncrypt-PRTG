@@ -38,7 +38,12 @@ param($result)   # required to access the $result parameter
 # Where the PRTG certificates live. 
 $PRTGCertRoot = 'C:\Program Files (x86)\PRTG Network Monitor\cert'
 # Let's Encrypt Intermediate CA
-$LEIntermediateCA = 'https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt'
+$LEIntermediateCA = 'https://letsencrypt.org/certs/lets-encrypt-r3.pem'
+# Restart PRTGCoreService (Required to update certificate)
+$RestartPRTGCoreService = $true
+# Restart PRTGProbeService (https://github.com/andyzib/LetsEncrypt-PRTG/issues/2)
+$RestartPRTGProbeService = $false
+# Restart PRTG
 ########## End of Configuration, no more changes! 
 
 # PowerShell PKI module needed for certificate conversion. 
@@ -109,12 +114,25 @@ if ($result.IsSuccess) {
         $OutCER = "$PRTGCertRoot\prtg.crt"
         $resultTEMP = Set-Content -Path $OutCER -Value $OutCertificatePEM
         $OutKey = "$PRTGCertRoot\prtg.key"
-        $resultTEMP = Set-Content -Path $OutKey -Value $OutPrivateKeyPEM
-        # Download Let's Encrypt Intermediate CA. 
-        $resultTEMP = Invoke-WebRequest -Uri $LEIntermediateCA -OutFile "$PRTGCertRoot\root.pem"
+        $resultTEMP = Set-Content -Path $OutKey -Value $OutPrivateKeyPEM       
+        # Write Public Cert to root.pem (https://github.com/andyzib/LetsEncrypt-PRTG/issues/3)
+        $OutRootPem = "$PRTGCertRoot\root.pem"
+        $resultTEMP = Set-Content -Path $OutCER -Value $OutRootPem
+        # Download LE Intermediate and Append to root.pem.
+        $OutFile = Join-Path -Path $env:TEMP -ChildPath "LEIntermediate.txt"
+        $resultTEMP = Invoke-WebRequest -Uri $LEIntermediateCA -OutFile $OutFile
+        # Append $OutFile to root.pem
+        Get-Content -Path $OutFile | Add-Content -Path $OutRootPem              
 
         # Restart PRTG. 
-        Restart-Service -Name PRTGCoreService -Force
+        if ($RestartPRTGCoreService) {
+            Restart-Service -Name PRTGCoreService -Force
+        }
+
+        if ($RestartPRTGProbeService) {
+            Restart-Service -Name RestartPRTGProbeService -Force
+        }
+
     }
 } else {
     Throw "Certify did not renew certificate. Aboring without making changes."
