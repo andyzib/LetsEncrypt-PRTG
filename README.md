@@ -8,15 +8,15 @@ Post request script to install a Let's Encrypt certificate obtained with Certify
 
 ## Requirements
 
-* [PowerShell 5.0](https://docs.microsoft.com/en-us/skypeforbusiness/set-up-your-computer-for-windows-powershell/download-and-install-windows-powershell-5-1)
+* [PowerShell 5.1](https://docs.microsoft.com/en-us/skypeforbusiness/set-up-your-computer-for-windows-powershell/download-and-install-windows-powershell-5-1)
 * You should already have Windows PowerShell 5.1 if you're running Windows 10 Anniversary Update or Windows Server 2016.
-* [PSPKI](https://www.pkisolutions.com/tools/pspki) module that is available in the [PowerShell Gallery](https://www.powershellgallery.com/packages/PSPKI/3.4.2.0).
-* Tested/Verified with Certify the Web version 4.1.6.0.
-* Tested/Verified on Server 2012 R2 with PowerShell 5.
+* [PSPKI](https://www.pkisolutions.com/tools/pspki) module that is available in the [PowerShell Gallery](https://www.powershellgallery.com/packages/PSPKI).
+* Tested/Verified with Certify the Web version 4.1.6.0 and 5.5.5.0.
+* Tested/Verified on Windows 10, Server 2012 R2, Server 2016, and Server 2019.
 
 ## Installation
 
-1. Install RSAT: Active Directory Certificate Services (May be a Windows 10 requirement only)
+1. If running on Windows 10, Install RSAT: Active Directory Certificate Services (Settings > Apps & features > Optional features)
 2. Open PowerShell as an administrator and run Install-Module PSPKI
 3. Save the script to a directory (Example: E:\Scripts\Certify-PRTG\Certify-PRTG.ps1)
 4. Verify that $PRTGCertRoot variable matches your PRTG installation.
