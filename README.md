@@ -30,7 +30,7 @@ The script must be configured as a Deployment Task in the Certify GUI.
 ![Certify Deployment Mode](Documentation/Images/Certify-DeploymentMode.png)
 3. Under Deployment Tasks, add a Run Powershell Script task.
 ![Select Run Powershell Script](Documentation/Images/Certify-DeploymentTask01.png)
-4. Set Trigger to "Run On Success."
+4. Set Trigger to "Run On Success."  
 ![Task General Settings](Documentation/Images/Certify-DeploymentTask02.png)
 5. Use a security principal with appropriate permissions for your environment.
 6. Pass Result as First Argument must be checked.
