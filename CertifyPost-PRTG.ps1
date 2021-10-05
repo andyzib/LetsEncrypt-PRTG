@@ -117,12 +117,15 @@ if ($result.IsSuccess) {
         $resultTEMP = Set-Content -Path $OutKey -Value $OutPrivateKeyPEM       
         # Write Public Cert to root.pem (https://github.com/andyzib/LetsEncrypt-PRTG/issues/3)
         $OutRootPem = "$PRTGCertRoot\root.pem"
-        $resultTEMP = Set-Content -Path $OutCER -Value $OutRootPem
+        $resultTEMP = Set-Content -Path $OutRootPem -Value $OutCertificatePEM
         # Download LE Intermediate and Append to root.pem.
         $OutFile = Join-Path -Path $env:TEMP -ChildPath "LEIntermediate.txt"
         $resultTEMP = Invoke-WebRequest -Uri $LEIntermediateCA -OutFile $OutFile
         # Append $OutFile to root.pem
-        Get-Content -Path $OutFile | Add-Content -Path $OutRootPem              
+        Get-Content -Path $OutFile | Add-Content -Path $OutRootPem         
+        
+        # Cleanup
+        Remove-Item -Path $OutFile
 
         # Restart PRTG. 
         if ($RestartPRTGCoreService) {
