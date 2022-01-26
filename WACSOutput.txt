@@ -1,0 +1,20 @@
+
+
+CertCommonName = zero 
+
+CachePassword = one 
+
+CacheFile = two 
+
+CertFriendlyName = three 
+
+CertThumbprint = four 
+
+RenewalId = five 
+
+StorePath = six 
+
+StoreType = seven 
+
+
+
