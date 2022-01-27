@@ -6,20 +6,34 @@
 .DESCRIPTION
 <Brief description of script>
  
-.PARAMETER <Parameter_Name>
-<Brief description of parameter input required. Repeat this attribute if required>
+.PARAMETER CertCommonName
+Mandatory. {CertCommonName} from wacs.exe - Common name (primary domain name)
 
-.PARAMETER NewCertThumbprint
-The exact thumbprint of the cert to be imported. 
+.PARAMETER StorePath
+Mandatory. {StorePath} from wacs.exe - Path or store name used by the store plugin
+
+.PARAMETER StoreType
+Mandatory. {StoreType} from wacs.exe - Name of the plugin (CentralSsl, CertificateStore or PemFiles)
+
+.PARAMETER RestartPRTGCoreService
+Optional. Switch paramater to have this script restart PRTG Core Service after installing the certificate. Restarting this service is REQUIRED for PRTG to see the new certificate. 
+
+.PARAMETER RestartPRTGProbeService
+Optional. Switch parameter to have this script restart PRTG Probe Service after installing the certificate. Not required in the script author's experience, but other script users have reported otherwise. 
+
+.PARAMETER TestRun
+Optional. TestRun allows the author to run tests on a system that does not have PRTG installed. :)
  
 .INPUTS
-<Inputs if any, otherwise state None>
+None
  
 .OUTPUTS
-<Outputs if any, otherwise state None - example: Log file stored in C:\Windows\Temp\<name>.log>
+A backup directory will be created in the PRTG cert folder. The backup directory will have a backup copy of the certificate that was replaced and a log file. 
  
 .NOTES
 Author: Andrew Zbikowski <andrew@itouthouse.net>
+Latest version can be found at https://github.com/andyzib/LetsEncrypt-PRTG
+
 Available script parameters from wacs.exe: https://github.com/PKISharp/win-acme/wiki/Install-script
 * {0} or {CertCommonName}    - Common name (primary domain name)
 * {1} or {CachePassword}     - The .pfx password (generated randomly for each renewal)
@@ -31,11 +45,10 @@ Available script parameters from wacs.exe: https://github.com/PKISharp/win-acme/
 * {StoreType}                - Name of the plugin (CentralSsl, CertificateStore or PemFiles)
  
 .EXAMPLE
-<Example goes here. Repeat this attribute for more than one example>
+WACSPost-PRTG.ps1 -CertCommonName {CertCommonName} -StorePath {StorePath} -StoreType {StoreType} -RestartPRTGCoreService
 #>
  
 #region Parameters
-# Enable -Debug, -Verbose Parameters. Write-Debug and Write-Verbose!
 [CmdletBinding()]
  
 # Advanced Parameters: https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_functions_advanced_parameters?view=powershell-6
@@ -105,6 +118,7 @@ if ($TestRun) {
 $PRTGInstallDir = $PRTGServerEXE.ImagePath | Split-Path | Split-Path
 $PRTGCertDir = Join-Path -Path $PRTGInstallDir -ChildPath "cert"
 
+# Verify PRTG directory. 
 if ( (Test-Path -Path $PRTGInstallDir -PathType Container) ) { 
   Write-Host "PRTG installation directory found at $PRTGInstallDir." -ForegroundColor Green
 } else {
@@ -116,6 +130,7 @@ if ( (Test-Path -Path $PRTGInstallDir -PathType Container) ) {
   }
 }
 
+# Verify PRTG cert directory. 
 if ( (Test-Path -Path $PRTGCertDir -PathType Container) ) {
   Write-Host "PRTG certificate directory found at $PRTGCertDir." -ForegroundColor Green
 } else {
@@ -129,13 +144,19 @@ if ( (Test-Path -Path $PRTGCertDir -PathType Container) ) {
 
 #endregion Declarations
 
-#region Verifications
-# Test that cert dir is writable (create backup directory?)
-#endregion Verifications
-
 #regioin Functions
 
 Function New-BackupDirectory {
+  <#
+    Creates the backup directory and also verify that the script can write to the PRTG cert folder.
+    If this function fails, the script will exit without making changes and no log file will be created. (wacs.exe will write to Windows Event Log)
+  #>
+  Param (
+    [Parameter(Mandatory=$true)]
+    [string]$PRTGCertDir,
+    [Parameter(Mandatory=$true)]
+    [string]$iso8601
+  )
   $Dir = New-Item -Path $PRTGCertDir -Name $iso8601 -Type Directory -ErrorAction Continue
   if ($null -eq $Dir) {
     # Failed to create backup directory. Not good. 
@@ -144,7 +165,11 @@ Function New-BackupDirectory {
     Return $Dir.FullName
   }
 }
+#end Function New-BackupDirectory
 Function Backup-PRTGCert {
+  <#
+    Creates a backup of the PRTG certificate currently in use. Only creats a copy, no changes to the existing cert. 
+  #>
   Param (
     [Parameter(Mandatory=$true)]
     [string]$SourceDir,
@@ -165,8 +190,8 @@ Function Backup-PRTGCert {
     },
     # root.pem
     [pscustomobject]@{
-      Source = Join-Path -Path $SourceDir -ChildPath 'prtg.crt'
-      Destination = Join-Path -Path $DestinationDir -ChildPath 'prtg.crt'
+      Source = Join-Path -Path $SourceDir -ChildPath 'root.pem'
+      Destination = Join-Path -Path $DestinationDir -ChildPath 'root.pem'
     }
   )
 
@@ -186,6 +211,9 @@ Function Backup-PRTGCert {
 }
 #end Function Backup-PRTGCert
 Function Remove-OldPRTGCert {
+  <#
+    Removes the current PRTG cert from the cert directory. Returns $false if removal failed. 
+  #>
   Param (
     [Parameter(Mandatory=$true)]
     [string]$PRTGCertDir
@@ -195,21 +223,126 @@ Function Remove-OldPRTGCert {
     $(Join-Path -Path $PRTGCertDir -ChildPath 'prtg.key'),
     $(Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt')
   )
+
+  $result = $true # Only change to false if a file exists after removal attempt. 
   foreach ($file in $Files) {
     Remove-Item -Path $file
     if (Test-Path -Path $file -PathType Leaf) {
       $result = $false
-    } else {
-      $result = $true
-    }
+    } 
   }
   Return $result # Result will be $true if files were successfuly deleted, false if delete failed. 
 }
-Function Install-NewPRTGCert {}
-Function Restore-PRTGCert {}
-Function Restart-PRTGServices {}
+#end Remove-OldPRTGCert
+Function Install-NewPRTGCert {
+  <#
+    Copies the files from wacs.exe to the PRTG cert directory. Renames the wacs.exe files to what PRTG expects. 
+  #>
+  Param (
+    [Parameter(Mandatory=$true)]
+    [string]$CertCommonName,
+    [Parameter(Mandatory=$true)]
+    [string]$StorePath,
+    [Parameter(Mandatory=$true)]
+    [string]$PRTGCertDir
+  )
+  # Setup an array of custom objects to make this easier. 
+  $Files = @(
+    # prtg.crt
+    [pscustomobject]@{
+      Source = Join-Path -Path $StorePath -ChildPath "$($CertCommonName)-crt.pem"
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt'
+    },
+    # prtg.key
+    [pscustomobject]@{
+      Source = Join-Path -Path $StorePath -ChildPath "$($CertCommonName)-key.pem"
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'prtg.key'
+    },
+    # root.pem
+    [pscustomobject]@{
+      Source = Join-Path -Path $StorePath -ChildPath "$($CertCOmmonName)-chain-only.pem"
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt'
+    }
+  )
+  # Copy from $StorePath to $PRTGCertDir. 
+  $return = $true
+  foreach ($file in $Files) {
+    Copy-Item -Path $file.Source -Destination $file.Destination 
+    if ( -Not (Test-Path -Path $file.Destination -PathType Leaf ) ) { 
+      $return = $false # File failed to copy, restore backup and fail. 
+    }
+  }
+  Return $return
+}
+#end Install-NewPRTGCert
+Function Restore-PRTGCert {
+  <#
+    If something failed, this function is called to restore the certificate from the backup. 
+  #>
+  Param (
+    [Parameter(Mandatory=$true)]
+    [string]$Backup,
+    [Parameter(Mandatory=$true)]
+    [string]$PRTGCertDir
+  )
+  $BackupDir = Join-Path -Path $PRTGCertDir -ChildPath $PRTGCertDir
+  if ( -Not (Test-Path -Path $BackupDir -PathType Container) ) {
+    $Message = "Backup directory $BackupDir was not found. Manual intervention to restore a valid certificate is required."
+    Write-Host $Message -ForegroundColor Red
+    Stop-Transcript
+    Throw $Message
+  }
 
-#>
+  # Setup Files Array to make this easier. 
+  $Files = @(
+    # prtg.crt
+    [pscustomobject]@{
+      Source = Join-Path -Path $BackupDir -ChildPath 'prtg.crt'
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt'
+    },
+    # prtg.key
+    [pscustomobject]@{
+      Source = Join-Path -Path $BackupDir -ChildPath 'prtg.key'
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'prtg.key'
+    },
+    # root.pem
+    [pscustomobject]@{
+      Source = Join-Path -Path $BackupDir -ChildPath 'root.pem'
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'root.pem'
+    }
+  )
+
+  # Copy from BackupDir to CertDir
+  $return = $true # Change to false if a copy fails. 
+  foreach ($file in $Files) {    
+    Copy-Item -Path $file.Source -Destination $file.Destination 
+    if ( -Not (Test-Path -Path $file.Destination -PathType Leaf) ) {
+      $return = $false
+    }    
+  }
+  Return $return
+}
+#end Restore-PRTGCert
+Function Restart-PRTGServices {
+  <#
+    Restarts the PRTG services if required. 
+  #>
+  Param (
+    [Parameter(Mandatory=$true)]
+    [bool]$RestartPRTGCoreService,
+    [Parameter(Mandatory=$true)]
+    [bool]$RestartPRTGProbeService
+  )
+  if ($RestartPRTGProbeService) {
+    Restart-Service -Name PRTGCoreService -Force
+  }
+
+  if ($RestartPRTGProbeService) {
+    Restart-Service -Name RestartPRTGProbeService -Force
+  }
+
+}
+#end Restart-PRTGServices
  
 #endregioin Functions
  
@@ -230,81 +363,57 @@ End Pseudocode #>
 
 
 # 1. Create the backup directory, exit script on fail: New-BackupDirectory
-$BackupDir = New-BackupDirectory
+$BackupDir = New-BackupDirectory -PRTGCertDir $PRTGCertDir -iso8601 $iso8601
 if ($null -eq $BackupDir) {
   Write-Host "Unable to create backup directory for current PRTG certificate. Script cannot safely continue." -ForegroundColor Red
-  Throw "Backup of current certificate failed. Exiting without making changes."
+  Throw "Creating backup directory failed. Exiting without making changes."
 }
 
 # 2. Start the transcript, writing to the backup directory. 
-$TranscriptFile = Join-Path -Path $BackupDir -ChildPath 'PowershellTranscript.txt'
+$TranscriptFile = Join-Path -Path $BackupDir -ChildPath "$($MyInvocation.MyCommand.Name)_LOG.txt"
 Start-Transcript -Path $TranscriptFile
 
 # 3. Backup exiting cert files. 
 Write-Host "Backing up current certificate files to $BackupDir." -ForegroundColor Cyan 
-Backup-PRTGCert -SourceDir $PRTGCertDir -DestinationDir $BackupDir
+$BackupResult = Backup-PRTGCert -SourceDir $PRTGCertDir -DestinationDir $BackupDir
+if ($BackupResult -eq $false) {
+  Write-Host "Backup of the current PRTG certificate failed. Script cannot safely continue." -ForegroundColor Red
+  Write-Host "No changes were made to curent PRTG certificate." -ForegroundColor Yellow
+  Throw "Backup of current certificate failed. Exiting without making changes."
+}
 
 # 4. Delete existing cert files.
 $Deleted = Remove-OldPRTGCert -PRTGCertDir $PRTGCertDir
 
 if ($Deleted -eq $false) {
-  Restore-PRTGCert -Backup $iso8601
+  $Restored = Restore-PRTGCert -Backup $iso8601 -PRTGCertDir $PRTGCertDir
+  if ($Restored) {
+    Write-Host "Removing old certificate failed, but changes were successfully reverted." -ForegroundColor Yellow    
+  } else {
+    Write-Host "Removing old certificate failed, and changes could not be reverted. Manual intervention is required!" -ForegroundColor Red
+  }
+  Stop-Transcript
+  Exit
 }
 
 # 5. Install new cert files. 
+$Installed = Install-NewPRTGCert -CertCommonName $CertCommonName -StorePath $StorePath -PRTGCertDir $PRTGCertDir
+if ($Installed -eq $false) {
+  $Restored = Restore-PRTGCert -Backup $iso8601 -PRTGCertDir $PRTGCertDir
+  if ($Restored) {
+    Write-Host "New certificate installation failed, but changes were successfully reverted." -ForegroundColor Yellow    
+  } else {
+    Write-Host "New certificate installation failed, and changes could not be reverted. Manual intervention is required!" -ForegroundColor Red
+  }
+  Stop-Transcript
+  Exit
+} else {
+  Write-Host "New certificate installation was successful!" -ForegroundColor Green
+}
+
 # 6. Restart-PRTGServices. 
+Restart-PRTGServices -RestartPRTGCoreService $RestartPRTGCoreService -RestartPRTGProbeService $RestartPRTGProbeService
 
+Write-Host "Certificate post-install script completed. Review logs for errors, happy monitoring!" -ForegroundColor Cyan
 
-<#
-CertCommonName = testprtg.cybertron.itouthouse.net
-StorePath = C:\prtgdev 
-StoreType = PemFiles
-
-testprtg.cybertron.itouthouse.net-chain-only.pem
-testprtg.cybertron.itouthouse.net-chain.pem
-testprtg.cybertron.itouthouse.net-crt.pem
-testprtg.cybertron.itouthouse.net-key.pem
-
-PRTG needs prtg.crt, prtg.key, and root.pem
-
-
-
-#> 
-
-  # prtg.crt
-#$sourcePRTGcrt = Join-Path -Path $StorePath -ChildPath "$($CertCommonName)-crt.pem"
-#$destinPRTGcrt = Join-Path -Path $arrConf.PRTGCertPath -ChildPath 'prtg.crt'
-
-#Write-Host "Source prtg.crt:      $sourcePRTGcrt"
-#Write-Host "Destination prtg.crt: $destinPRTGcrt"
-#Write-Host ""
-
-# prtg.key
-#$sourcePRTGkey = Join-Path -Path $StorePath -ChildPath "$($CertCommonName)-key.pem"
-#$destinPRTGkey = Join-Path -Path $arrConf.PRTGCertPath -ChildPath 'prtg.key'
-
-#Write-Host "Source prtg.key:      $sourcePRTGkey"
-#Write-Host "Destination prtg.key: $destinPRTGkey"
-#Write-Host ""
-
-# root.pem
-#$sourceROOTpem = Join-Path -Path $StorePath -ChildPath "$($CertCOmmonName)-chain-only.pem"
-#$destinROOTpem = Join-Path -Path $arrConf.PRTGCertPath -ChildPath 'root.pem'
-
-#Write-Host "Source root.pem:      $sourceROOTpem"
-#Write-Host "Destination root.pem: $destinROOTpem"
-#Write-Host ""
-
-# Restart PRTG. 
-<#
-if ($RestartPRTGCoreService) {
-  Restart-Service -Name PRTGCoreService -Force
-}
-
-if ($RestartPRTGProbeService) {
-  Restart-Service -Name RestartPRTGProbeService -Force
-}
-#>
-
-
-#Stop-Transcript
+Stop-Transcript
