@@ -1,0 +1,3 @@
+$PRTGServerEXE = Get-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\PRTGCoreService -Name ImagePath
+
+$PRTGServerEXE.ImagePath |split-path | split-path
