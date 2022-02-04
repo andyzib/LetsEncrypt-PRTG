@@ -108,15 +108,13 @@ $iso8601 = $iso8601.Replace(":","_")
 
 if ($TestRun) {
   # For a TestRun, we don't need PRTG installed so just set the expected variable. 
-  $PRTGServerEXE = @{
-    ImagePath = 'C:\Program Files (x86)\PRTG Network Monitor\64 bit\PRTG Server.exe'
-  }
+  $PRTGServerEXE = 'C:\Program Files (x86)\PRTG Network Monitor\64 bit\PRTG Server.exe'
 } else {
   $PRTGServerEXE = $(Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\PRTGCoreService" -Name ImagePath).ImagePath
   $PRTGServerEXE = $PRTGServerEXE.Trim('"')
 }
 
-$PRTGInstallDir = $PRTGServerEXE.ImagePath | Split-Path | Split-Path
+$PRTGInstallDir = $PRTGServerEXE | Split-Path | Split-Path
 $PRTGCertDir = Join-Path -Path $PRTGInstallDir -ChildPath "cert"
 
 # Verify PRTG directory. 
@@ -158,7 +156,8 @@ Function New-BackupDirectory {
     [Parameter(Mandatory=$true)]
     [string]$iso8601
   )
-  $Dir = New-Item -Path $PRTGCertDir -Name $iso8601 -Type Directory -ErrorAction Continue
+  $DirName = "Backup_$iso8601"
+  $Dir = New-Item -Path $PRTGCertDir -Name $DirName -Type Directory -ErrorAction Continue
   if ($null -eq $Dir) {
     # Failed to create backup directory. Not good. 
     Return $null
@@ -197,6 +196,7 @@ Function Backup-PRTGCert {
   )
 
   foreach ($file in $Files) {
+    Write-Host "Backing up $($file.Source) to $($file.Destination)..."
     Copy-Item -Path $file.Source -Destination $file.Destination
     if ( -Not (Test-Path -Path $file.Destination) ) {
       Write-Host "Unknown error when backing up $($file.Destination)." -ForegroundColor Red
@@ -204,6 +204,8 @@ Function Backup-PRTGCert {
       Stop-Transcript
       Exit
     }
+    Write-Host "Done!" -ForegroundColor Green
+    Write-Host ""
   }
 
   # If we've gotten this far, the backup didn't fail so move to the next step. 
@@ -222,11 +224,12 @@ Function Remove-OldPRTGCert {
   $Files = @(
     $(Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt'),
     $(Join-Path -Path $PRTGCertDir -ChildPath 'prtg.key'),
-    $(Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt')
+    $(Join-Path -Path $PRTGCertDir -ChildPath 'root.pem')
   )
 
   $result = $true # Only change to false if a file exists after removal attempt. 
   foreach ($file in $Files) {
+    Write-Host "Deleting $file"
     Remove-Item -Path $file
     if (Test-Path -Path $file -PathType Leaf) {
       $result = $false
@@ -262,16 +265,21 @@ Function Install-NewPRTGCert {
     # root.pem
     [pscustomobject]@{
       Source = Join-Path -Path $StorePath -ChildPath "$($CertCOmmonName)-chain-only.pem"
-      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'prtg.crt'
+      Destination = Join-Path -Path $PRTGCertDir -ChildPath 'root.pem'
     }
   )
   # Copy from $StorePath to $PRTGCertDir. 
   $return = $true
   foreach ($file in $Files) {
+    Write-Host "Copying $($file.Source) to $($file.Destination )... " 
     Copy-Item -Path $file.Source -Destination $file.Destination 
     if ( -Not (Test-Path -Path $file.Destination -PathType Leaf ) ) { 
       $return = $false # File failed to copy, restore backup and fail. 
+      Write-Host "Failed." -ForegroundColor Red
+    } else {
+      Write-Host "Done." -ForegroundColor Green
     }
+    Write-Host ""
   }
   Return $return
 }
@@ -324,26 +332,6 @@ Function Restore-PRTGCert {
   Return $return
 }
 #end Restore-PRTGCert
-Function Restart-PRTGServices {
-  <#
-    Restarts the PRTG services if required. 
-  #>
-  Param (
-    [Parameter(Mandatory=$true)]
-    [bool]$RestartPRTGCoreService,
-    [Parameter(Mandatory=$true)]
-    [bool]$RestartPRTGProbeService
-  )
-  if ($RestartPRTGProbeService) {
-    Restart-Service -Name PRTGCoreService -Force
-  }
-
-  if ($RestartPRTGProbeService) {
-    Restart-Service -Name RestartPRTGProbeService -Force
-  }
-
-}
-#end Restart-PRTGServices
  
 #endregioin Functions
  
@@ -373,17 +361,23 @@ if ($null -eq $BackupDir) {
 # 2. Start the transcript, writing to the backup directory. 
 $TranscriptFile = Join-Path -Path $BackupDir -ChildPath "$($MyInvocation.MyCommand.Name)_LOG.txt"
 Start-Transcript -Path $TranscriptFile
+Write-Host ""
 
 # 3. Backup exiting cert files. 
 Write-Host "Backing up current certificate files to $BackupDir." -ForegroundColor Cyan 
+Write-Host ""
 $BackupResult = Backup-PRTGCert -SourceDir $PRTGCertDir -DestinationDir $BackupDir
 if ($BackupResult -eq $false) {
   Write-Host "Backup of the current PRTG certificate failed. Script cannot safely continue." -ForegroundColor Red
   Write-Host "No changes were made to curent PRTG certificate." -ForegroundColor Yellow
   Throw "Backup of current certificate failed. Exiting without making changes."
 }
+Write-Host "Backup of current certificate files complete." -ForegroundColor Green
+Write-Host ""
 
 # 4. Delete existing cert files.
+Write-Host "Deleting the old certificate files." -ForegroundColor Cyan
+Write-Host ""
 $Deleted = Remove-OldPRTGCert -PRTGCertDir $PRTGCertDir
 
 if ($Deleted -eq $false) {
@@ -393,11 +387,18 @@ if ($Deleted -eq $false) {
   } else {
     Write-Host "Removing old certificate failed, and changes could not be reverted. Manual intervention is required!" -ForegroundColor Red
   }
+  Write-Host ""
   Stop-Transcript
   Exit
+} else {
+  Write-Host ""
+  Write-Host "Old certificate files were successfully removed." -ForegroundColor Green
+  Write-Host ""
 }
 
 # 5. Install new cert files. 
+Write-Host "Installing new certificate." -ForegroundColor Cyan
+Write-Host ""
 $Installed = Install-NewPRTGCert -CertCommonName $CertCommonName -StorePath $StorePath -PRTGCertDir $PRTGCertDir
 if ($Installed -eq $false) {
   $Restored = Restore-PRTGCert -Backup $iso8601 -PRTGCertDir $PRTGCertDir
@@ -410,11 +411,25 @@ if ($Installed -eq $false) {
   Exit
 } else {
   Write-Host "New certificate installation was successful!" -ForegroundColor Green
+  Write-Host ""
 }
 
 # 6. Restart-PRTGServices. 
-Restart-PRTGServices -RestartPRTGCoreService $RestartPRTGCoreService -RestartPRTGProbeService $RestartPRTGProbeService
+
+if ($RestartPRTGCoreService) {
+  Write-Host "Restarting PRTGCoreService." 
+  Restart-Service -Name PRTGCoreService -Force
+  Write-Host "Done!" -ForegroundColor Green
+  Write-Host ""
+}
+
+if ($RestartPRTGProbeService) {
+  Write-Host "Restarting RestartPRTGProbeService." 
+  Restart-Service -Name RestartPRTGProbeService -Force
+  Write-Host "Done!" -ForegroundColor Green
+  Write-Host ""
+}
 
 Write-Host "Certificate post-install script completed. Review logs for errors, happy monitoring!" -ForegroundColor Cyan
-
+Write-Host ""
 Stop-Transcript
