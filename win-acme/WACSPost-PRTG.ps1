@@ -112,7 +112,8 @@ if ($TestRun) {
     ImagePath = 'C:\Program Files (x86)\PRTG Network Monitor\64 bit\PRTG Server.exe'
   }
 } else {
-  $PRTGServerEXE = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\PRTGCoreService" -Name ImagePath
+  $PRTGServerEXE = $(Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\PRTGCoreService" -Name ImagePath).ImagePath
+  $PRTGServerEXE = $PRTGServerEXE.Trim('"')
 }
 
 $PRTGInstallDir = $PRTGServerEXE.ImagePath | Split-Path | Split-Path
