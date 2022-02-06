@@ -1,1 +1,0 @@
- .\WACSPost-PRTG.ps1 -CertCommonName 'test.example.com' -StorePath 'C:\Users\aszbikowski' -StoreType PemFiles -TestRu

@@ -23,6 +23,7 @@ None.
  
 .NOTES
 Author: Andrew Zbikowski <andrew@itouthouse.net>
+Latest version can be found at https://github.com/andyzib/LetsEncrypt-PRTG
 
 Requires PSPKI module for PFX to PEM conversion. from.
 Install-Module PSPKI should to the trick, see https://www.pkisolutions.com/tools/pspki for more on PSPKI. 
