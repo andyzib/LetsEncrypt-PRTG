@@ -2,6 +2,10 @@
 
 This is a post request script to install a certificate aquired using Certify the Web into [PRTG](https://www.paessler.com/prtg).
 
+## Deprecation / Retirement
+
+Since creating this script, Certify the Web has expanded Deployment Tasks to include "Deploy to Generic Server (multi-purpose)" which can write the needed files to PRTG's directory. Using this Deployment Task followed by a Run task to restart PRTG should be sufficient. As of Feburary 2022, I don't have plans on improving this script. If you find it useful over Certify's built in tasks, please submit a [GitHub Issue](https://github.com/andyzib/LetsEncrypt-PRTG/issues/new/choose) with your feature/enhancment requests. Thanks!  
+
 ## Requirements
 
 * [PowerShell 5.1](https://docs.microsoft.com/en-us/skypeforbusiness/set-up-your-computer-for-windows-powershell/download-and-install-windows-powershell-5-1)
