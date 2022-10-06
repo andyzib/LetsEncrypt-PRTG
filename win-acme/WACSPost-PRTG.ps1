@@ -486,7 +486,7 @@ if ($RestartPRTGCoreService) {
 
 if ($RestartPRTGProbeService) {
   Write-Host "Restarting RestartPRTGProbeService." 
-  Restart-Service -Name RestartPRTGProbeService -Force
+  Restart-Service -Name PRTGProbeService -Force
   Write-Host "Done!" -ForegroundColor Green
   Write-Host ""
 }
